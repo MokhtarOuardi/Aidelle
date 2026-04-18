@@ -27,3 +27,5 @@ fastapi_backend/health_data.db
 # OS specific
 .DS_Store
 Thumbs.db
+
+Agent_Backend/.env
