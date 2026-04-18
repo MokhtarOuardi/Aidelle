@@ -6,6 +6,7 @@ import shutil
 import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langgraph.prebuilt import create_react_agent
 from local_qwen import LocalQwen
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
         "ALWAYS respond in simple, clear, and easy-to-understand language. "
         "Avoid medical jargon — explain things as if you are talking to a grandparent. "
         "Use short sentences, be warm and reassuring, and use bullet points when listing things. "
+        "CRITICAL: Keep your response VERY short and concise. Never exceed 80 words or 450 characters. "
         "IMPORTANT: You MUST ALWAYS use the 'search_medical_database' tool to check PubMed before replying to ANY medical query. "
         "Never answer a medical query from your own knowledge without checking the database first. "
         "After getting the results, summarize them in plain everyday language the user can understand."
@@ -65,8 +67,33 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Allow connections from any origin (needed for local development)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class ChatRequest(BaseModel):
     message: str
+
+import re
+def sanitize_ai_response(content):
+    """Flattens responses, strips TTS-breaking markdown, and enforces length limits."""
+    if isinstance(content, list):
+        content = " ".join([part.get("text", "") for part in content if isinstance(part, dict) and "text" in part])
+    elif not isinstance(content, str):
+        content = str(content)
+        
+    content = re.sub(r'[*#_~`]', '', content)
+    content = re.sub(r'^[ \t]*[-+][ \t]+', '', content, flags=re.MULTILINE)
+    content = content.strip()
+    
+    if len(content) > 495:
+        content = content[:490] + "..."
+    return content
 
 @app.get("/health")
 async def health():
@@ -95,8 +122,10 @@ async def chat(request: ChatRequest):
             elif msg.type == "tool":
                 print(f"Tool Response [{msg.name}]:\n  {msg.content[:200]}..." if len(msg.content) > 200 else f"Tool Response [{msg.name}]:\n  {msg.content}")
         print("=============================\n")
-        
-        return {"response": response["messages"][-1].content}
+        final_content = response["messages"][-1].content
+        final_content = sanitize_ai_response(final_content)
+            
+        return {"response": final_content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -117,10 +146,40 @@ async def analyze_video(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
         
         import tools
+        import cv2
         if not hasattr(tools, 'vision_analyzer') or tools.vision_analyzer is None:
             raise HTTPException(status_code=503, detail="Vision analyzer is not initialized.")
             
-        analysis_result = tools.vision_analyzer.analyze_injury(file_path)
+        # Convert WebM to MP4 for Qwen-VL compatibility
+        # Browsers record WebM streams which often lack explicit FPS metadata, causing crashing inside qwen_vl_utils
+        fixed_file_path = file_path
+        if file_path.lower().endswith('.webm'):
+            fixed_file_path = file_path.replace('.webm', '.mp4')
+            cap = cv2.VideoCapture(file_path)
+            
+            # Ensure we have a valid FPS to write with, defaulting to 1 (which qwen needs) if parsing fails
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps == 0 or fps != fps: # Check for NaN or 0
+                fps = 1.0
+                
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # Use mp4v codec for highest compatibility without needing FFmpeg installed locally
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(fixed_file_path, fourcc, fps, (width, height))
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                out.write(frame)
+                
+            cap.release()
+            out.release()
+
+        analysis_result = tools.vision_analyzer.analyze_injury(fixed_file_path)
+        analysis_result = sanitize_ai_response(analysis_result)
         
         return {
             "file_name": file.filename,
@@ -154,6 +213,7 @@ async def analyze_image(file: UploadFile = File(...)):
             raise HTTPException(status_code=503, detail="Vision analyzer is not initialized.")
             
         analysis_result = tools.vision_analyzer.analyze_injury_image(file_path)
+        analysis_result = sanitize_ai_response(analysis_result)
         
         return {
             "file_name": file.filename,

@@ -28,4 +28,9 @@ fastapi_backend/health_data.db
 .DS_Store
 Thumbs.db
 
-Agent_Backend/.env
+**/.env
+**/.env.local
+**/uploads/*
+**/node_modules/*
+**/dist/*
+**/__pycache__/*
