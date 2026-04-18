@@ -42,4 +42,8 @@ object DataTypes {
     const val OXYGEN_SATURATION = "oxygen_saturation"
     const val SLEEP = "sleep"
     const val BODY_TEMPERATURE = "body_temperature"
+    const val ACCELEROMETER = "accelerometer"
+    const val GYROSCOPE = "gyroscope"
+    const val GPS = "gps"
+    const val ACCIDENT_ALERT = "accident_alert"
 }

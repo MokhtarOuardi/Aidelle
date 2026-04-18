@@ -1,5 +1,6 @@
 package com.aidelle.sensorread
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,6 +28,18 @@ class MainActivity : ComponentActivity() {
             healthViewModel?.onPermissionsResult()
         }
 
+    // Location permission request launcher
+    private val requestLocationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+            val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+            if (fineGranted || coarseGranted) {
+                healthViewModel?.onLocationPermissionGranted()
+            } else {
+                healthViewModel?.onLocationPermissionDenied()
+            }
+        }
+
     private var healthViewModel: HealthViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +57,7 @@ class MainActivity : ComponentActivity() {
 
                     val uiState by viewModel.uiState.collectAsState()
                     val healthRecords by viewModel.healthRecords.collectAsState()
+                    val sensorToggles by viewModel.sensorToggles.collectAsState()
 
                     // Check permissions on launch
                     androidx.compose.runtime.LaunchedEffect(uiState.healthConnectAvailable) {
@@ -56,14 +70,27 @@ class MainActivity : ComponentActivity() {
                     HomeScreen(
                         uiState = uiState,
                         healthRecords = healthRecords,
+                        sensorToggles = sensorToggles,
                         onRequestPermissions = {
                             requestPermissions.launch(HealthConnectManager.PERMISSIONS)
+                        },
+                        onRequestLocationPermission = {
+                            requestLocationPermission.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
+                            )
                         },
                         onSyncNow = { viewModel.syncNow() },
                         onReadData = { viewModel.readHealthData() },
                         onSendData = { viewModel.sendDataToServer() },
                         onCheckServer = { viewModel.checkServerConnection() },
-                        onUpdateServerUrl = { url -> viewModel.updateServerUrl(url) }
+                        onUpdateServerUrl = { url -> viewModel.updateServerUrl(url) },
+                        onUpdateSensorToggle = { key, enabled ->
+                            viewModel.updateSensorToggle(key, enabled)
+                        },
+                        onDismissAccidentAlert = { viewModel.dismissAccidentAlert() }
                     )
                 }
             }

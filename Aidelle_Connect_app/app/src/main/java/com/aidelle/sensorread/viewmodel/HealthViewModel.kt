@@ -3,6 +3,7 @@ package com.aidelle.sensorread.viewmodel
 import android.app.Application
 import android.os.Build
 import android.util.Log
+import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.Constraints
@@ -10,8 +11,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.aidelle.sensorread.data.HealthConnectAvailability
-import com.aidelle.sensorread.data.HealthConnectManager
+import com.aidelle.sensorread.data.*
 import com.aidelle.sensorread.data.api.RetrofitClient
 import com.aidelle.sensorread.data.model.HealthDataBatch
 import com.aidelle.sensorread.data.model.HealthRecord
@@ -23,7 +23,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * ViewModel managing Health Connect data and server communication.
+ * ViewModel managing Health Connect data, device sensors, and server communication.
  */
 class HealthViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -32,6 +32,10 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     val healthConnectManager = HealthConnectManager(application)
+    val sensorDataManager = SensorDataManager(application)
+    val locationDataManager = LocationDataManager(application)
+    val accidentDetector = AccidentDetector(sensorDataManager, locationDataManager)
+    val sensorPreferences = SensorPreferences(application)
 
     // --- UI State ---
 
@@ -41,15 +45,86 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     private val _healthRecords = MutableStateFlow<List<HealthRecord>>(emptyList())
     val healthRecords: StateFlow<List<HealthRecord>> = _healthRecords.asStateFlow()
 
+    private val _sensorToggles = MutableStateFlow(SensorToggles())
+    val sensorToggles: StateFlow<SensorToggles> = _sensorToggles.asStateFlow()
+
     init {
         checkHealthConnectAvailability()
         scheduleBackgroundSync()
+        observeSensorPreferences()
+        observeAccidentEvents()
+    }
+
+    /**
+     * Observe sensor preference changes and start/stop managers accordingly.
+     */
+    private fun observeSensorPreferences() {
+        viewModelScope.launch {
+            sensorPreferences.toggles.collect { toggles ->
+                val previousToggles = _sensorToggles.value
+                _sensorToggles.value = toggles
+
+                // Manage gyroscope/accelerometer sensors
+                val needsMotionSensors = toggles.gyroscope || toggles.accidentDetection
+                val hadMotionSensors = previousToggles.gyroscope || previousToggles.accidentDetection
+
+                if (needsMotionSensors && !hadMotionSensors) {
+                    sensorDataManager.start()
+                } else if (!needsMotionSensors && hadMotionSensors) {
+                    sensorDataManager.stop()
+                }
+
+                // Manage GPS
+                if (toggles.gps && !previousToggles.gps) {
+                    if (locationDataManager.hasLocationPermission()) {
+                        locationDataManager.startTracking()
+                    }
+                } else if (!toggles.gps && previousToggles.gps) {
+                    locationDataManager.stopTracking()
+                }
+
+                // Manage accident detection
+                if (toggles.accidentDetection && !previousToggles.accidentDetection) {
+                    accidentDetector.start()
+                } else if (!toggles.accidentDetection && previousToggles.accidentDetection) {
+                    accidentDetector.stop()
+                }
+            }
+        }
+    }
+
+    /**
+     * Observe accident events and immediately send alerts to the server.
+     */
+    private fun observeAccidentEvents() {
+        viewModelScope.launch {
+            accidentDetector.accidentEvents.collect { event ->
+                Log.e(TAG, "🚨 Accident event received! Confidence: ${event.confidence}")
+
+                _uiState.value = _uiState.value.copy(
+                    accidentDetected = true,
+                    statusMessage = "🚨 ACCIDENT DETECTED (${event.confidence} confidence)"
+                )
+
+                // Immediately send accident alert to server
+                try {
+                    val batch = HealthDataBatch(
+                        deviceId = "${Build.MANUFACTURER} ${Build.MODEL}",
+                        records = listOf(event.record)
+                    )
+                    val response = RetrofitClient.getApiService().sendHealthData(batch)
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Accident alert sent to server successfully")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send accident alert", e)
+                }
+            }
+        }
     }
 
     /**
      * Schedule a periodic sync every 15 minutes (minimum allowed by WorkManager).
-     * For 5-minute sync, one would typically use Foreground Services, but for this
-     * demo we will stick to WorkManager's minimum.
      */
     private fun scheduleBackgroundSync() {
         val constraints = Constraints.Builder()
@@ -113,6 +188,28 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
+     * Called when location permission is granted, start GPS if toggle is on.
+     */
+    fun onLocationPermissionGranted() {
+        _uiState.value = _uiState.value.copy(
+            locationPermissionGranted = true
+        )
+        if (_sensorToggles.value.gps) {
+            locationDataManager.startTracking()
+        }
+    }
+
+    /**
+     * Called when location permission is denied.
+     */
+    fun onLocationPermissionDenied() {
+        _uiState.value = _uiState.value.copy(
+            locationPermissionGranted = false,
+            statusMessage = "Location permission denied. GPS tracking unavailable."
+        )
+    }
+
+    /**
      * Read all health data from the last 24 hours.
      */
     fun readHealthData(hoursBack: Long = 24) {
@@ -125,13 +222,46 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val end = Instant.now()
                 val start = end.minus(hoursBack, ChronoUnit.HOURS)
+                val toggles = _sensorToggles.value
 
-                val records = healthConnectManager.readAllData(start, end)
-                _healthRecords.value = records
+                val allRecords = mutableListOf<HealthRecord>()
+
+                // Read Health Connect data (respecting toggles)
+                if (toggles.heartRate || toggles.steps || toggles.oxygenSaturation ||
+                    toggles.sleep || toggles.bodyTemperature) {
+                    val hcRecords = healthConnectManager.readAllData(start, end)
+                    // Filter based on toggles
+                    allRecords.addAll(hcRecords.filter { record ->
+                        when (record.dataType) {
+                            "heart_rate" -> toggles.heartRate
+                            "steps" -> toggles.steps
+                            "oxygen_saturation" -> toggles.oxygenSaturation
+                            "sleep" -> toggles.sleep
+                            "body_temperature" -> toggles.bodyTemperature
+                            else -> true
+                        }
+                    })
+                }
+
+                // Add device sensor data
+                if (toggles.gyroscope) {
+                    allRecords.addAll(sensorDataManager.drainAccelerometerRecords())
+                    allRecords.addAll(sensorDataManager.drainGyroscopeRecords())
+                    // Also add latest snapshot
+                    allRecords.addAll(sensorDataManager.getLatestReadings())
+                }
+
+                // Add GPS data
+                if (toggles.gps) {
+                    allRecords.addAll(locationDataManager.drainLocationRecords())
+                    locationDataManager.getLatestReading()?.let { allRecords.add(it) }
+                }
+
+                _healthRecords.value = allRecords
 
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    statusMessage = "Read ${records.size} records from the last ${hoursBack}h",
+                    statusMessage = "Read ${allRecords.size} records from the last ${hoursBack}h",
                     lastReadTime = Instant.now().toString()
                 )
             } catch (e: Exception) {
@@ -213,10 +343,39 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
                 // Step 1: Read data
                 val end = Instant.now()
                 val start = end.minus(hoursBack, ChronoUnit.HOURS)
-                val records = healthConnectManager.readAllData(start, end)
-                _healthRecords.value = records
+                val toggles = _sensorToggles.value
 
-                if (records.isEmpty()) {
+                val allRecords = mutableListOf<HealthRecord>()
+
+                // Health Connect data
+                val hcRecords = healthConnectManager.readAllData(start, end)
+                allRecords.addAll(hcRecords.filter { record ->
+                    when (record.dataType) {
+                        "heart_rate" -> toggles.heartRate
+                        "steps" -> toggles.steps
+                        "oxygen_saturation" -> toggles.oxygenSaturation
+                        "sleep" -> toggles.sleep
+                        "body_temperature" -> toggles.bodyTemperature
+                        else -> true
+                    }
+                })
+
+                // Device sensor data
+                if (toggles.gyroscope) {
+                    allRecords.addAll(sensorDataManager.drainAccelerometerRecords())
+                    allRecords.addAll(sensorDataManager.drainGyroscopeRecords())
+                    allRecords.addAll(sensorDataManager.getLatestReadings())
+                }
+
+                // GPS data
+                if (toggles.gps) {
+                    allRecords.addAll(locationDataManager.drainLocationRecords())
+                    locationDataManager.getLatestReading()?.let { allRecords.add(it) }
+                }
+
+                _healthRecords.value = allRecords
+
+                if (allRecords.isEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         statusMessage = "No health data found in the last ${hoursBack}h"
@@ -226,12 +385,12 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Step 2: Send to server
                 _uiState.value = _uiState.value.copy(
-                    statusMessage = "Sending ${records.size} records..."
+                    statusMessage = "Sending ${allRecords.size} records..."
                 )
 
                 val batch = HealthDataBatch(
                     deviceId = "${Build.MANUFACTURER} ${Build.MODEL}",
-                    records = records
+                    records = allRecords
                 )
                 val response = RetrofitClient.getApiService().sendHealthData(batch)
 
@@ -299,6 +458,29 @@ class HealthViewModel(application: Application) : AndroidViewModel(application) 
         )
         checkServerConnection()
     }
+
+    /**
+     * Update a sensor toggle preference.
+     */
+    fun updateSensorToggle(key: Preferences.Key<Boolean>, enabled: Boolean) {
+        viewModelScope.launch {
+            sensorPreferences.updateToggle(key, enabled)
+        }
+    }
+
+    /**
+     * Dismiss the accident alert banner.
+     */
+    fun dismissAccidentAlert() {
+        _uiState.value = _uiState.value.copy(accidentDetected = false)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        sensorDataManager.stop()
+        locationDataManager.stopTracking()
+        accidentDetector.stop()
+    }
 }
 
 /**
@@ -317,4 +499,6 @@ data class HealthUiState(
     val lastReadTime: String? = null,
     val lastSyncTime: String? = null,
     val error: String? = null,
+    val locationPermissionGranted: Boolean = false,
+    val accidentDetected: Boolean = false,
 )

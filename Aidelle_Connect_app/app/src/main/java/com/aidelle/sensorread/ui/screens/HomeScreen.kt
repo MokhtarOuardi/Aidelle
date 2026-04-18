@@ -2,6 +2,7 @@ package com.aidelle.sensorread.ui.screens
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,27 +19,35 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.Preferences
 import com.aidelle.sensorread.R
+import com.aidelle.sensorread.data.SensorPreferences
+import com.aidelle.sensorread.data.SensorToggles
 import com.aidelle.sensorread.data.model.HealthRecord
 import com.aidelle.sensorread.ui.components.DataSummaryCard
 import com.aidelle.sensorread.ui.components.HealthDataCard
 import com.aidelle.sensorread.ui.components.ServerStatusChip
+import com.aidelle.sensorread.ui.theme.*
 import com.aidelle.sensorread.viewmodel.HealthUiState
 
 /**
- * Main home screen displaying health data dashboard and sync controls.
+ * Main home screen displaying health data dashboard, sensor toggles, and sync controls.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     uiState: HealthUiState,
     healthRecords: List<HealthRecord>,
+    sensorToggles: SensorToggles,
     onRequestPermissions: () -> Unit,
+    onRequestLocationPermission: () -> Unit,
     onSyncNow: () -> Unit,
     onReadData: () -> Unit,
     onSendData: () -> Unit,
     onCheckServer: () -> Unit,
     onUpdateServerUrl: (String) -> Unit,
+    onUpdateSensorToggle: (Preferences.Key<Boolean>, Boolean) -> Unit,
+    onDismissAccidentAlert: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSettings by remember { mutableStateOf(false) }
@@ -98,8 +107,56 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
+            // --- Accident Alert Banner ---
+            if (uiState.accidentDetected) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = AccidentColor.copy(alpha = 0.12f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = "Accident Alert",
+                                tint = AccidentColor,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Accident Detected!",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = AccidentColor
+                                )
+                                Text(
+                                    text = "A potential fall or impact was detected. Alert has been sent to the server.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(onClick = onDismissAccidentAlert) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = AccidentColor
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // --- Settings Panel (collapsible) ---
             if (showSettings) {
+                // Server Configuration
                 item {
                     Card(
                         shape = RoundedCornerShape(16.dp),
@@ -145,6 +202,122 @@ fun HomeScreen(
                                     Text("Test")
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Sensor Configuration
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Sensor Configuration",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Enable or disable individual sensor readings",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Health Connect sensors
+                            Text(
+                                text = "Health Connect",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+
+                            SensorToggleRow(
+                                label = "Heart Rate",
+                                emoji = "❤️",
+                                checked = sensorToggles.heartRate,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_HEART_RATE, it) }
+                            )
+                            SensorToggleRow(
+                                label = "Steps",
+                                emoji = "👣",
+                                checked = sensorToggles.steps,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_STEPS, it) }
+                            )
+                            SensorToggleRow(
+                                label = "Blood Oxygen (SpO2)",
+                                emoji = "🩸",
+                                checked = sensorToggles.oxygenSaturation,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_OXYGEN, it) }
+                            )
+                            SensorToggleRow(
+                                label = "Sleep",
+                                emoji = "🛏️",
+                                checked = sensorToggles.sleep,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_SLEEP, it) }
+                            )
+                            SensorToggleRow(
+                                label = "Body Temperature",
+                                emoji = "🌡️",
+                                checked = sensorToggles.bodyTemperature,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_BODY_TEMP, it) }
+                            )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // Device sensors
+                            Text(
+                                text = "Device Sensors",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = GyroscopeColor
+                            )
+
+                            SensorToggleRow(
+                                label = "Gyroscope / Accelerometer",
+                                emoji = "📐",
+                                checked = sensorToggles.gyroscope,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_GYROSCOPE, it) }
+                            )
+                            SensorToggleRow(
+                                label = "GPS Location",
+                                emoji = "📍",
+                                checked = sensorToggles.gps,
+                                onCheckedChange = {
+                                    onUpdateSensorToggle(SensorPreferences.KEY_GPS, it)
+                                    if (it && !uiState.locationPermissionGranted) {
+                                        onRequestLocationPermission()
+                                    }
+                                },
+                                subtitle = if (sensorToggles.gps && !uiState.locationPermissionGranted)
+                                    "⚠️ Location permission required" else null
+                            )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // Safety
+                            Text(
+                                text = "Safety",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = AccidentColor
+                            )
+
+                            SensorToggleRow(
+                                label = "Accident Detection",
+                                emoji = "🚨",
+                                checked = sensorToggles.accidentDetection,
+                                onCheckedChange = { onUpdateSensorToggle(SensorPreferences.KEY_ACCIDENT, it) },
+                                subtitle = "Detects falls using accelerometer & gyroscope"
+                            )
                         }
                     }
                 }
@@ -401,5 +574,50 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Reusable row with a labeled switch toggle for enabling/disabling a sensor.
+ */
+@Composable
+private fun SensorToggleRow(
+    label: String,
+    emoji: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(text = emoji)
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            subtitle?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 32.dp)
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }

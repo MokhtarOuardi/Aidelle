@@ -87,6 +87,29 @@ fun HealthDataCard(
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
+                // Show extra metadata for GPS
+                if (record.dataType == DataTypes.GPS) {
+                    val lat = record.metadata?.get("latitude")
+                    val lng = record.metadata?.get("longitude")
+                    if (lat != null && lng != null) {
+                        Text(
+                            text = "📍 ${"%.4f".format(lat)}, ${"%.4f".format(lng)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                // Show extra metadata for accident alert
+                if (record.dataType == DataTypes.ACCIDENT_ALERT) {
+                    val confidence = record.metadata?.get("confidence")
+                    if (confidence != null) {
+                        Text(
+                            text = "⚠️ Confidence: $confidence",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AccidentColor
+                        )
+                    }
+                }
             }
         }
     }
@@ -210,6 +233,10 @@ private fun getDataTypeInfo(dataType: String): DataTypeInfo {
         DataTypes.OXYGEN_SATURATION -> DataTypeInfo(Icons.Rounded.Air, OxygenColor, "Blood Oxygen")
         DataTypes.SLEEP -> DataTypeInfo(Icons.Rounded.Bedtime, SleepColor, "Sleep")
         DataTypes.BODY_TEMPERATURE -> DataTypeInfo(Icons.Rounded.Thermostat, TemperatureColor, "Body Temperature")
+        DataTypes.ACCELEROMETER -> DataTypeInfo(Icons.Rounded.Speed, AccelerometerColor, "Accelerometer")
+        DataTypes.GYROSCOPE -> DataTypeInfo(Icons.Rounded.ScreenRotation, GyroscopeColor, "Gyroscope")
+        DataTypes.GPS -> DataTypeInfo(Icons.Rounded.LocationOn, GpsColor, "GPS Location")
+        DataTypes.ACCIDENT_ALERT -> DataTypeInfo(Icons.Rounded.Warning, AccidentColor, "Accident Alert")
         else -> DataTypeInfo(Icons.Rounded.HealthAndSafety, Primary, dataType)
     }
 }
@@ -225,6 +252,10 @@ private fun formatValue(value: Double, dataType: String): String {
         DataTypes.HEART_RATE -> value.toInt().toString()
         DataTypes.OXYGEN_SATURATION -> String.format("%.1f", value)
         DataTypes.BODY_TEMPERATURE -> String.format("%.1f", value)
+        DataTypes.ACCELEROMETER -> String.format("%.2f", value)
+        DataTypes.GYROSCOPE -> String.format("%.2f", value)
+        DataTypes.GPS -> String.format("%.1f", value)
+        DataTypes.ACCIDENT_ALERT -> String.format("%.1f", value)
         else -> String.format("%.1f", value)
     }
 }

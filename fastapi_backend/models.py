@@ -9,12 +9,16 @@ from enum import Enum
 
 
 class DataType(str, Enum):
-    """Supported health data types from Health Connect."""
+    """Supported health data types from Health Connect and device sensors."""
     HEART_RATE = "heart_rate"
     STEPS = "steps"
     OXYGEN_SATURATION = "oxygen_saturation"
     SLEEP = "sleep"
     BODY_TEMPERATURE = "body_temperature"
+    ACCELEROMETER = "accelerometer"
+    GYROSCOPE = "gyroscope"
+    GPS = "gps"
+    ACCIDENT_ALERT = "accident_alert"
 
 
 class HealthRecord(BaseModel):

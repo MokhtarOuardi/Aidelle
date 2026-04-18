@@ -78,6 +78,12 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    // Google Play Services Location (GPS)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Jetpack DataStore (Preferences for sensor toggles)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
