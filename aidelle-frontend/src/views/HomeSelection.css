@@ -1,0 +1,137 @@
+.home-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: var(--aidelle-bg);
+  padding: 40px;
+  box-sizing: border-box;
+}
+
+.branding {
+  text-align: center;
+  margin-bottom: 60px;
+  animation: fadeInDown 0.8s ease-out;
+}
+
+.branding .logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-md);
+  border: 4px solid white;
+}
+
+.branding h1 {
+  font-size: 48px;
+  font-weight: 800;
+  margin: 0 0 10px 0;
+  color: var(--aidelle-text);
+  letter-spacing: -1px;
+}
+
+.branding p {
+  font-size: 18px;
+  color: var(--aidelle-text-light);
+  margin: 0;
+}
+
+.cards-container {
+  display: flex;
+  gap: 40px;
+  max-width: 1000px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.demo-card {
+  flex: 1;
+  min-width: 300px;
+  max-width: 400px;
+  position: relative;
+  background: var(--aidelle-card);
+  border: 1px solid rgba(54, 125, 236, 0.1);
+  border-radius: 24px;
+  padding: 50px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: fadeInUp 0.8s ease-out backwards;
+}
+
+.demo-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.demo-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: var(--gradient-blue);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.demo-card:hover {
+  transform: translateY(-10px);
+  box-shadow: var(--shadow-md);
+}
+
+.demo-card:hover::before {
+  opacity: 1;
+}
+
+.icon-wrapper {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: var(--aidelle-bg);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--aidelle-primary);
+  transition: all 0.3s ease;
+}
+
+.demo-card:hover .icon-wrapper {
+  background: var(--gradient-blue);
+  color: white;
+  box-shadow: var(--shadow-glow);
+}
+
+.demo-card h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--aidelle-text);
+  margin: 0 0 16px 0;
+}
+
+.demo-card p {
+  font-size: 16px;
+  color: var(--aidelle-text-light);
+  margin: 0;
+  line-height: 1.6;
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
