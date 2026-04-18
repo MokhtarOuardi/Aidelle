@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, Heart, Thermometer,
@@ -46,10 +46,47 @@ const SENSOR_TYPES = [
   { value: 'sleep', label: 'Sleep Monitor', icon: Moon },
 ];
 
+const dataApiUrl = import.meta.env.VITE_DATA_API_URL;
+
 export default function NurseDashboard() {
   const navigate = useNavigate();
   const [selectedPatientId, setSelectedPatientId] = useState(1);
-  const selectedPatient = patientsData.find(p => p.id === selectedPatientId);
+  const [patients, setPatients] = useState(patientsData);
+
+  // ── Fetch Health Data ──
+  useEffect(() => {
+    if (!dataApiUrl) return;
+
+    const fetchLatestData = async () => {
+      try {
+        const response = await fetch(`${dataApiUrl}/api/health-data/latest`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const latest = data.latest_records || [];
+
+        // Map backend data to the patients state
+        // For simplicity in this demo, we apply the latest data to the selected patient's specific metrics
+        setPatients(prevPatients => prevPatients.map(p => {
+          if (p.id === selectedPatientId) {
+            const hrRecord = latest.find(r => r.data_type === 'heart_rate');
+            if (hrRecord) {
+              return { ...p, bpm: hrRecord.value, status: hrRecord.value > 100 ? 'Critical' : hrRecord.value > 90 ? 'Warning' : 'Stable' };
+            }
+          }
+          return p;
+        }));
+      } catch (err) {
+        console.error("Dashboard fetch error:", err);
+      }
+    };
+
+    fetchLatestData();
+    const interval = setInterval(fetchLatestData, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [selectedPatientId]);
+
+  const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
   // ── Medications State ──
   const [medications, setMedications] = useState({
@@ -189,7 +226,7 @@ export default function NurseDashboard() {
           </div>
 
           <div className="patient-cards">
-            {patientsData.map(patient => (
+            {patients.map(patient => (
               <div
                 key={patient.id}
                 className={`patient-mini-card ${patient.status.toLowerCase()} ${selectedPatientId === patient.id ? 'selected' : ''}`}

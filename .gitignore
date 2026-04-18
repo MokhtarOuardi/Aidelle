@@ -29,3 +29,8 @@ fastapi_backend/health_data.db
 Thumbs.db
 
 **/.env
+**/.env.local
+**/uploads/*
+**/node_modules/*
+**/dist/*
+**/__pycache__/*

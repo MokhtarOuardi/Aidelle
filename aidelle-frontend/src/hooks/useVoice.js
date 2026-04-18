@@ -51,7 +51,7 @@ export const useVoice = () => {
                     interim += result[0].transcript;
                 }
             }
-            
+
             // For continuous mode, we want to accumulate or just pass the full latest finalized transcript
             if (final) {
                 setInterimTranscript(final);
@@ -78,19 +78,34 @@ export const useVoice = () => {
                 audioRef.current.pause();
                 audioRef.current.currentTime = 0;
             }
+            // Safety: format input to plain string and truncate to 495 characters (Camb AI plan limit)
+            let safeText = typeof text === 'string' ? text : (Array.isArray(text) ? text.map(t => t.text || t).join(' ') : (text?.text || JSON.stringify(text)));
+            if (safeText.length > 495) {
+                // Cut at 492 chars to allow for ...
+                safeText = safeText.substring(0, 492) + "...";
+            }
 
-            // Generate speech using Camb AI MARS Flash
-            const ttsResponse = await cambClient.current.textToSpeech.tts({
-                text: text,
-                voice_id: 170629, 
-                language: "en-us",
-                speech_model: "mars-flash",
-                output_configuration: {
-                    format: "wav"
-                }
+            // 1. Generate speech using Camb AI API directly to avoid SDK mangling (422 error)
+            const response = await fetch('https://client.camb.ai/apis/tts-stream', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': import.meta.env.VITE_CAMB_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: safeText,
+                    voice_id: 170629,
+                    language: "en-us",
+                    speech_model: "mars-flash"
+                })
             });
 
-            const blob = await ttsResponse.blob();
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(`Camb AI Error ${response.status}: ${JSON.stringify(errorData)}`);
+            }
+
+            const blob = await response.blob();
             const url = URL.createObjectURL(blob);
 
             const audio = new Audio(url);
@@ -109,7 +124,7 @@ export const useVoice = () => {
             };
 
             // Audio is ready to play
-            setIsSpeaking(true); // Now we are officially speaking
+            setIsSpeaking(true);
             if (onReady) onReady();
             await audio.play();
         } catch (error) {

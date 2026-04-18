@@ -9,6 +9,95 @@ import { useBrain } from '../hooks/useBrain';
 import { useVoice } from '../hooks/useVoice';
 import './UserMobileView.css';
 
+const SentenceSubtitle = ({ fullText, isSpeaking }) => {
+  const [visibleWordCount, setVisibleWordCount] = useState(0);
+  const allWords = useRef([]);
+  const intervalRef = useRef(null);
+  const WORDS_PER_LINE = 7;
+  const MAX_VISIBLE_LINES = 3;
+
+  // Split text into words on change
+  useEffect(() => {
+    if (!fullText) {
+      allWords.current = [];
+      setVisibleWordCount(0);
+      return;
+    }
+    allWords.current = fullText.split(/\s+/).filter(w => w.length > 0);
+    setVisibleWordCount(0);
+  }, [fullText]);
+
+  // Reveal words at speaking pace
+  useEffect(() => {
+    if (!isSpeaking || allWords.current.length === 0) {
+      clearInterval(intervalRef.current);
+      if (!isSpeaking && allWords.current.length > 0) {
+        setVisibleWordCount(allWords.current.length);
+      }
+      return;
+    }
+
+    intervalRef.current = setInterval(() => {
+      setVisibleWordCount(prev => {
+        if (prev >= allWords.current.length) {
+          clearInterval(intervalRef.current);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 300);
+
+    return () => clearInterval(intervalRef.current);
+  }, [isSpeaking, fullText]);
+
+  if (allWords.current.length === 0 || visibleWordCount === 0) return null;
+
+  // Build line groups from ALL words (not just visible), so layout stays stable
+  const lineGroups = [];
+  for (let i = 0; i < allWords.current.length; i += WORDS_PER_LINE) {
+    lineGroups.push(
+      allWords.current.slice(i, i + WORDS_PER_LINE).map((word, wi) => ({
+        word,
+        globalIndex: i + wi,
+      }))
+    );
+  }
+
+  // Determine which lines to show
+  const currentLineIndex = Math.floor((visibleWordCount - 1) / WORDS_PER_LINE);
+  const startLine = Math.max(0, currentLineIndex - MAX_VISIBLE_LINES + 1);
+  const endLine = Math.min(lineGroups.length, startLine + MAX_VISIBLE_LINES);
+  const visibleLines = lineGroups.slice(startLine, endLine);
+
+  return (
+    <div className="subtitle-lines">
+      {startLine > 0 && (
+        <div key={`fade-${startLine - 1}`} className="subtitle-line fading-out">
+          {lineGroups[startLine - 1].map(({ word, globalIndex }) => (
+            <span key={globalIndex} className="subtitle-word visible">{word} </span>
+          ))}
+        </div>
+      )}
+      {visibleLines.map((lineWords, li) => (
+        <div
+          key={`line-${startLine + li}`}
+          className={`subtitle-line ${startLine + li === currentLineIndex ? 'newest' : ''}`}
+        >
+          {lineWords.map(({ word, globalIndex }) => (
+            <span
+              key={globalIndex}
+              className={`subtitle-word ${globalIndex < visibleWordCount ? 'visible' : ''}`}
+            >
+              {word}{' '}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+
 export default function UserMobileView() {
   const navigate = useNavigate();
   const [lastResponse, setLastResponse] = useState("");
@@ -22,6 +111,7 @@ export default function UserMobileView() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [showCameraPreview, setShowCameraPreview] = useState(false);
   const [videoTranscriptFinal, setVideoTranscriptFinal] = useState("");
+  const [shouldHideSubtitle, setShouldHideSubtitle] = useState(false);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -41,20 +131,29 @@ export default function UserMobileView() {
     setAnimationState('waving');
   }, []);
 
-  // 2. Talking/Idle state sync
+  // 2. Talking/Idle state sync & Subtitle Delay
   useEffect(() => {
     if (isSpeaking) {
-      // Only switch to 'idle' (temporary override for 'talking') if we aren't already in an active ephemeral state
+      setShouldHideSubtitle(false);
       if (animationState !== 'nodding' && animationState !== 'waving') {
         setAnimationState('idle');
       }
+    } else if (isThinking) {
+      setShouldHideSubtitle(false);
     } else if (!isThinking && (animationState === 'talking' || animationState === 'idle')) {
-      // Stay in idle when done thinking/speaking
       if (animationState !== 'idle') setAnimationState('idle');
-      // Clear subtitle when done speaking
-      setTimeout(() => setAiSubtitle(""), 2000);
+
+      // Wait 6 seconds before initiating the fade-out
+      if (aiSubtitle && !shouldHideSubtitle) {
+        const timer = setTimeout(() => {
+          setShouldHideSubtitle(true);
+          // After fade transition (1s), clear the text
+          setTimeout(() => setAiSubtitle(""), 1000);
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [isSpeaking, isThinking, animationState]);
+  }, [isSpeaking, isThinking, animationState, aiSubtitle, shouldHideSubtitle]);
 
   // 3. Show interim transcript while listening
   useEffect(() => {
@@ -128,7 +227,7 @@ export default function UserMobileView() {
   }, [animationState]);
 
   // ── Camera / Video Recording ──────────────────────────────────
-  
+
   const handleVideoButtonClick = () => {
     if (isRecording) {
       stopRecording();
@@ -157,7 +256,7 @@ export default function UserMobileView() {
       recordedChunksRef.current = [];
       transcriptBufferRef.current = "";
       setUserTranscript("");
-      
+
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'video/webm;codecs=vp9'
       });
@@ -219,41 +318,57 @@ export default function UserMobileView() {
   };
 
   const sendVideoToApi = async (blob, transcript) => {
-    // Fake API call – simulates uploading the video + transcript
-    console.log("📹 Sending video to API...", { 
-      size: blob.size, 
+    const agentApiUrl = import.meta.env.VITE_AGENT_API_URL;
+
+    if (!agentApiUrl) {
+      console.error("Agent API URL is missing");
+      closeCamera();
+      return;
+    }
+
+    console.log("📹 Sending video to real Agent API...", {
+      size: blob.size,
       type: blob.type,
-      transcript: transcript 
+      transcript: transcript
     });
 
-    setIsThinking(true); // Block UI while 'uploading'
+    closeCamera(); // Immediately shut off camera preview and release hardware
+    setIsThinking(true);
     setAnimationState('thinking');
 
     try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const formData = new FormData();
+      // append the blob as a file
+      formData.append('file', blob, 'recording.webm');
 
-      console.log("✅ Video and transcript uploaded successfully (fake API)");
-      
+      const response = await fetch(`${agentApiUrl}/analyze-video`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Agent API responded with status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Video uploaded successfully:", data);
+
+      const analysisText = data.analysis || "I've analyzed your video.";
+
       // Add to conversation history
       setConversationHistory(prev => [...prev, {
         role: 'user',
-        text: transcript ? `📹 Video: "${transcript}"` : '📹 Video message (no audio detected)',
+        text: transcript ? `📹 Video: "${transcript}"` : '📹 Video message',
         timestamp: new Date()
       }]);
 
-      // Simulate AI acknowledging the video and what was said
-      const fakeResponse = transcript 
-        ? `I received your video and heard you say: "${transcript}". Let me help you with that.`
-        : "I received your video. Let me take a look at that for you.";
-      
       speak(
-        fakeResponse,
+        analysisText,
         () => {
           setIsThinking(false);
-          setAiSubtitle(fakeResponse);
+          setAiSubtitle(analysisText);
           setAnimationState('nodding');
-          setConversationHistory(prev => [...prev, { role: 'ai', text: fakeResponse, timestamp: new Date() }]);
+          setConversationHistory(prev => [...prev, { role: 'ai', text: analysisText, timestamp: new Date() }]);
         }
       );
 
@@ -261,6 +376,7 @@ export default function UserMobileView() {
       console.error("Video upload error:", error);
       setIsThinking(false);
       setAnimationState('idle');
+      alert("Failed to analyze video. Please try again.");
     }
 
     closeCamera();
@@ -340,9 +456,11 @@ export default function UserMobileView() {
           </Canvas>
 
           {/* AI Subtitles overlay on top of avatar */}
-          {aiSubtitle && (isSpeaking || isThinking) && (
-            <div className="ai-subtitle-overlay">
-              <div className="ai-subtitle-text">{aiSubtitle}</div>
+          {aiSubtitle && (
+            <div className={`ai-subtitle-overlay ${shouldHideSubtitle ? 'exiting' : ''}`}>
+              <div className="ai-subtitle-text">
+                {isThinking ? aiSubtitle : <SentenceSubtitle fullText={aiSubtitle} isSpeaking={isSpeaking} />}
+              </div>
             </div>
           )}
         </div>

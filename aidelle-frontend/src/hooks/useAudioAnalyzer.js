@@ -23,12 +23,12 @@ export const useAudioAnalyzer = (audioElement) => {
     }
 
     const context = audioContextRef.current;
-    
+
     // Ensure context is resumed since we already have user interaction by the time audio plays
     if (context.state === 'suspended') {
       context.resume().catch(e => console.error("Could not resume AudioContext:", e));
     }
-    
+
     // Only create source once for the same audio element
     if (!sourceRef.current) {
       try {
@@ -36,10 +36,10 @@ export const useAudioAnalyzer = (audioElement) => {
         analyserRef.current = context.createAnalyser();
         analyserRef.current.fftSize = 512; // Higher resolution for better vowel detection
         analyserRef.current.smoothingTimeConstant = 0.5; // Smooth out the jitter
-        
+
         const bufferLength = analyserRef.current.frequencyBinCount;
         dataArrayRef.current = new Uint8Array(bufferLength);
-        
+
         sourceRef.current.connect(analyserRef.current);
         analyserRef.current.connect(context.destination);
       } catch (e) {
@@ -50,7 +50,7 @@ export const useAudioAnalyzer = (audioElement) => {
     const update = () => {
       if (analyserRef.current && !audioElement.paused) {
         analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-        
+
         // Calculate raw volume (RMS or simple average)
         let sum = 0;
         for (let i = 0; i < dataArrayRef.current.length; i++) {
@@ -58,11 +58,11 @@ export const useAudioAnalyzer = (audioElement) => {
         }
         const average = sum / dataArrayRef.current.length;
         const normalizedVolume = Math.min(1, average / 100); // Sensetive normalization
-        
+
         // Update the ref directly instead of triggering a React render
         analyzerDataRef.current.volume = normalizedVolume;
         analyzerDataRef.current.frequencies = dataArrayRef.current;
-        if (normalizedVolume > 0.01) console.log("Analyzer:", normalizedVolume.toFixed(3));
+        // if (normalizedVolume > 0.01) console.log("Analyzer:", normalizedVolume.toFixed(3));
       } else {
         analyzerDataRef.current.volume = 0;
       }

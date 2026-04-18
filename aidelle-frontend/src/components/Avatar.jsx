@@ -13,6 +13,22 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
   const currentActionNameRef = useRef(null);
   const blinkRef = useRef(0);
   const breathRef = useRef(0);
+  const [targetExpression, setTargetExpression] = useState('neutral');
+
+  // 0. Expression Cycling (Idling Variety)
+  useEffect(() => {
+    if (animationState === 'idle' && !speaking) {
+      const cycleExpression = () => {
+        const others = ['happy', 'neutral'];
+        const next = others[Math.floor(Math.random() * others.length)];
+        setTargetExpression(next);
+      };
+      const interval = setInterval(cycleExpression, 2000);
+      return () => clearInterval(interval);
+    } else {
+      setTargetExpression('neutral');
+    }
+  }, [animationState, speaking]);
 
   // 0. Audio Analysis
   const analyzerDataRef = useAudioAnalyzer(audioElement);
@@ -22,16 +38,28 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
     loader.register((parser) => new VRMLoaderPlugin(parser));
   });
 
-  const vrm = useMemo(() => gltf.userData.vrm, [gltf]);
+  const vrm = useMemo(() => {
+    if (gltf.userData.vrm) {
+      const v = gltf.userData.vrm;
+      // Early attachment to suppress library warnings during clip creation
+      if (v.lookAt && !v.lookAt.quaternionProxy) {
+        v.lookAt.quaternionProxy = new VRMLookAtQuaternionProxy();
+        v.lookAt.quaternionProxy.name = 'lookAtQuaternionProxy';
+      }
+      return v;
+    }
+    return null;
+  }, [gltf]);
 
   useEffect(() => {
     if (vrm) {
       vrm.lookAt.enabled = true;
-      
+
       // Setup LookAt proxy early to suppress library warnings during animation creation
       if (vrm.lookAt && !vrm.lookAt.quaternionProxy) {
-        vrm.lookAt.quaternionProxy = new VRMLookAtQuaternionProxy();
-        vrm.lookAt.quaternionProxy.name = 'lookAtQuaternionProxy';
+        const proxy = new VRMLookAtQuaternionProxy();
+        proxy.name = 'lookAtQuaternionProxy';
+        vrm.lookAt.quaternionProxy = proxy;
       }
     }
   }, [vrm]);
@@ -65,12 +93,17 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
 
       for (const [name, path] of Object.entries(animationFiles)) {
         try {
+          // Double check LookAt proxy before creating each clip to suppress warnings
+          if (vrm.lookAt && !vrm.lookAt.quaternionProxy) {
+            vrm.lookAt.quaternionProxy = new VRMLookAtQuaternionProxy();
+          }
+
           const vrmaGltf = await vrmaLoader.loadAsync(path);
           const vrmAnimation = vrmaGltf.userData.vrmAnimations[0];
           if (vrmAnimation) {
-             const clip = createVRMAnimationClip(vrmAnimation, vrm);
-             clip.name = name;
-             loadedClips[name] = clip;
+            const clip = createVRMAnimationClip(vrmAnimation, vrm);
+            clip.name = name;
+            loadedClips[name] = clip;
           }
         } catch (e) {
           console.error(`Failed to load animation ${name}:`, e);
@@ -126,10 +159,10 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
 
     const nextAction = actionsRef.current[animationState];
     const prevActionName = currentActionNameRef.current;
-    
+
     if (nextAction && prevActionName !== animationState) {
       const prevAction = actionsRef.current[prevActionName];
-      
+
       // Determine fade duration: Talking to Idle needs more time
       let fadeDuration = 0.5;
       if (prevActionName === 'talking' && animationState === 'idle') fadeDuration = 0.8;
@@ -140,11 +173,11 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
       nextAction.setEffectiveWeight(1);
       nextAction.fadeIn(fadeDuration);
       nextAction.play();
-      
+
       if (prevAction) {
         prevAction.fadeOut(fadeDuration);
       }
-      
+
       currentActionNameRef.current = animationState;
     }
   }, [animationState]);
@@ -161,23 +194,38 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
     // 3. Set Procedural Expressions & Procedural Polish
     blinkRef.current += delta;
     breathRef.current += delta;
-    
+
     const breathScale = 1.0 + Math.sin(breathRef.current * 1.5) * 0.001;
     vrm.scene.scale.set(breathScale, breathScale, breathScale);
 
-    vrm.expressionManager.setValue('blink', Math.sin(blinkRef.current * 0.5) > 0.98 ? 1.0 : 0.0);
+    // Only blink if we are in a neutral expression state
+    if (targetExpression === 'neutral') {
+      vrm.expressionManager.setValue('blink', Math.sin(blinkRef.current * 0.5) > 0.98 ? 1.0 : 0.0);
+    } else {
+      vrm.expressionManager.setValue('blink', 0);
+    }
+
+    // Smoothly transition between idle expressions
+    const idleExpressions = ['happy', 'neutral'];
+    idleExpressions.forEach(name => {
+      const current = vrm.expressionManager.getValue(name) || 0;
+      const target = (targetExpression === name) ? 1.0 : 0.0; // 0.7 for subtle natural look
+      if (Math.abs(current - target) > 0.01) {
+        vrm.expressionManager.setValue(name, THREE.MathUtils.lerp(current, target, delta * 1.5));
+      }
+    });
 
     if (speaking) {
       // Procedural Lip Sync (Guaranteed to work, bypasses AudioContext policies)
-      const t = state.clock.elapsedTime;
+      const t = state.clock.getElapsedTime();
       const talkingSpeed = 16;
-      
+
       // Combine two waves to simulate varied syllables
       const wave1 = (Math.sin(t * talkingSpeed) + 1) / 2;
       const wave2 = (Math.sin(t * talkingSpeed * 0.6 + 2.0) + 1) / 2;
-      
+
       let openAmount = wave1 * 0.7 + wave2 * 0.3;
-      
+
       // Make it snappy like real speech, not floaty
       if (openAmount < 0.2) openAmount = 0;
       else openAmount = (openAmount - 0.2) * 1.25;
@@ -187,13 +235,13 @@ const Avatar = ({ url = '/assistant.vrm', animationState = 'idle', speaking = fa
       vrm.expressionManager.setValue('ih', openAmount > 0.7 ? 0.3 : 0);
       vrm.expressionManager.setValue('ou', 0);
     } else {
-        // Reset safely without locking the expressions every frame
-        const currentAa = vrm.expressionManager.getValue('aa');
-        if (currentAa && currentAa > 0.01) {
-          vrm.expressionManager.setValue('aa', Math.max(0, currentAa - delta * 8));
-          vrm.expressionManager.setValue('ih', 0);
-          vrm.expressionManager.setValue('ou', 0);
-        }
+      // Reset safely without locking the expressions every frame
+      const currentAa = vrm.expressionManager.getValue('aa');
+      if (currentAa && currentAa > 0.01) {
+        vrm.expressionManager.setValue('aa', Math.max(0, currentAa - delta * 8));
+        vrm.expressionManager.setValue('ih', 0);
+        vrm.expressionManager.setValue('ou', 0);
+      }
     }
 
     // 4. Update VRM LAST (Calculates IK, LookAt, and applies expressions)
