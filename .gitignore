@@ -1,0 +1,29 @@
+# Android/Gradle
+Aidelle_Connect_app/build/
+Aidelle_Connect_app/.gradle/
+Aidelle_Connect_app/local.properties
+Aidelle_Connect_app/*/build/
+*.apk
+*.aab
+.idea/
+*.iml
+
+# Python
+fastapi_backend/venv/
+fastapi_backend/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Databases
+*.db
+*.sqlite3
+fastapi_backend/health_data.db
+
+# OS specific
+.DS_Store
+Thumbs.db
