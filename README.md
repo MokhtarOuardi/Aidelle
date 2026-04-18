@@ -306,11 +306,12 @@ The Aidelle Tier 1 dashboard (`dashboard.py`) provides:
 
 ## Contact and Credits
 
-Developed by **Mokhtar Ouardi**, **Adam Aburaya** and **Anas Aburaya** for the EarthDay Hackathon.
+Developed by **Mokhtar Ouardi**, **Adam Aburaya**, **Omar Abouelmagd** and **Anas Aburaya** for the myAI Hackathon.
 
 - **Mokhtar Ouardi**: [GitHub](https://github.com/MokhtarOuardi) | [Email](mailto:m.ouardi@graduate.utm.my)
 - **Anas Aburaya**: [GitHub](https://github.com/Shadowpasha) | [Email](mailto:ameranas1923@gmail.com)
-- **Adam Aburaya**: [GitHub](https://github.com/adam) | [Email](mailto:@gmail.com)
+- **Adam Aburaya**: [GitHub](https://github.com/amer-adam) | [Email](mailto:ameradam6a@gmail.com)
+- **Omar Abouelmagd**: [GitHub](https://github.com/OmarAbouelmagd) | [Email](mailto:omarabolmagd@gmail.com)
 
 ---
 © 2026 InfiniTea Team. All rights reserved.
