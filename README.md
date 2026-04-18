@@ -1,4 +1,4 @@
-# Aidelle : Your Personal AI Nurse 🩺🤖
+# Aidelle : Your Personal AI Nurse
 
 ![Aidelle Banner](assets/banner.jpg)
 
@@ -6,7 +6,7 @@
 
 ---
 
-## 📱 Architecture Overview
+##  Architecture Overview
 
 ```mermaid
 graph LR
@@ -22,10 +22,10 @@ graph LR
 
 ---
 
-## 📊 Supported Health Metrics
+##  Supported Health Metrics
 
-Aidelle currently supports robust tracking and reading of five critical physiological markers:
-* 🫀 **Heart Rate** (`bpm`)
+Aidelle supports modular smart health monitoring sensor data including but not limited to :
+* ❤️ **Heart Rate** (`bpm`)
 * 👣 **Steps** (`steps`)
 * 🩸 **Blood Oxygen / SpO2** (`%`)
 * 🛏️ **Sleep Duration** (`minutes`)
@@ -33,7 +33,7 @@ Aidelle currently supports robust tracking and reading of five critical physiolo
 
 ---
 
-## 🛠️ Project Setup & Installation
+##  Project Setup & Installation
 
 ### 1. FastAPI Backend setup
 ```bash
@@ -59,7 +59,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## 💻 API & Database Documentation
+##  API & Database Documentation
 
 ### Entity-Relationship (Database)
 
@@ -120,4 +120,13 @@ The backend SQLite database `health_data.db` relies on the `health_records` tabl
 
 ---
 
-*Aidelle relies on Health Connect. Ensure your companion app (e.g. Mi Fitness, Samsung Health) is pushing data into Health Connect natively on the device.*
+## Contact and Credits
+
+Developed by **Mokhtar Ouardi**, **Adam Aburaya** and **Anas Aburaya** for the EarthDay Hackathon.
+
+- **Mokhtar Ouardi**: [GitHub](https://github.com/MokhtarOuardi) | [Email](mailto:m.ouardi@graduate.utm.my)
+- **Anas Aburaya**: [GitHub](https://github.com/Shadowpasha) | [Email](mailto:ameranas1923@gmail.com)
+- **Adam Aburaya**: [GitHub](https://github.com/adam) | [Email](mailto:@gmail.com)
+
+---
+© 2026 InfiniTea Team. All rights reserved.
