@@ -2,7 +2,7 @@
 
 ![Aidelle Banner](assets/banner.jpg)
 
-**Aidelle** is a full-stack, AI-powered health monitoring ecosystem designed to care for elderly users. It combines an **Android (Jetpack Compose)** mobile client, a **Python FastAPI** data-sync backend, and a **LangGraph-powered AI Agent** backend into one cohesive platform. The mobile app reads biometrics from smartwatches via Android **Health Connect**, syncs readings to a local server, and the AI agent provides conversational medical assistance — including injury vision analysis, medication reminders, PubMed research, anomaly detection, and emergency contact alerting.
+**Aidelle** is a full-stack, AI-powered health monitoring ecosystem designed to care for elderly users. It combines a **React + Three.js** web frontend with a 3D AI avatar, an **Android (Jetpack Compose)** mobile client, a **Python FastAPI** data-sync backend, and a **LangGraph-powered AI Agent** backend into one cohesive platform. The mobile app reads biometrics from smartwatches via Android **Health Connect**, syncs readings to a local server, and the AI agent provides conversational medical assistance — including injury vision analysis, medication reminders, PubMed research, anomaly detection, fall/accident detection, and emergency contact alerting.
 
 ---
 
@@ -17,6 +17,16 @@ graph TD
     subgraph "Android Device"
         HC["Android Health Connect"]
         APP["Aidelle Connect App\nKotlin · Jetpack Compose"]
+        GYRO["Gyroscope / Accelerometer"]
+        GPS["GPS (FusedLocation)"]
+        ACCIDENT["Accident Detector"]
+    end
+
+    subgraph "Web Frontend"
+        REACT["React + Vite\n:5173"]
+        VRM["3D VRM Avatar\nThree.js · @pixiv/three-vrm"]
+        STT["Browser Speech-to-Text"]
+        TTS["Camb AI TTS"]
     end
 
     subgraph "Backend Server"
@@ -34,14 +44,23 @@ graph TD
 
     subgraph "External Services"
         PUBMED["PubMed / NCBI\ne-Utilities API"]
+        CAMB["Camb AI\nText-to-Speech"]
     end
 
     W -->|Companion App| HC
     HC -->|Read Permissions| APP
+    GYRO --> APP
+    GPS --> APP
+    APP --> ACCIDENT
     APP -->|HTTP POST /api/health-data| FAST
     FAST --> SQLite
     FAST --> Mongo
     FAST --> DASH
+    REACT --> AGENT
+    REACT --> TTS
+    STT --> REACT
+    VRM --> REACT
+    TTS --> CAMB
     AGENT --> GEMINI
     AGENT --> QWEN
     AGENT --> PUBMED
@@ -52,10 +71,41 @@ graph TD
 
 | # | Component | Tech Stack | Purpose |
 |---|-----------|------------|---------|
-| 1 | **Aidelle Connect** (Android App) | Kotlin 2.0, Jetpack Compose, Health Connect 1.1, Retrofit 2, WorkManager | Reads wearable biometrics via Health Connect, displays a dashboard, and syncs data to the backend every 15 min |
-| 2 | **FastAPI Data Backend** | Python, FastAPI, SQLite, MongoDB, Pydantic v2 | RESTful API that ingests, stores, and serves time-series health records |
-| 3 | **AI Agent Backend** | Python, LangGraph (ReAct), Gemini 3 Flash, Qwen 3.5 0.8B (local), LangChain | Conversational medical assistant with tool-calling: vision injury analysis, PubMed search, medication reminders, sensor anomaly detection, emergency alerting |
-| 4 | **Streamlit Dashboard** | Streamlit, Plotly, Pandas | Live health visualization with configurable alert thresholds and a Vital Stability Score |
+| 1 | **Aidelle Frontend** (Web App) | React 19, Vite 8, Three.js, @pixiv/three-vrm, Camb AI TTS, Recharts, React Router | Interactive 3D AI nurse avatar with voice conversation, video injury analysis, and a nurse monitoring dashboard |
+| 2 | **Aidelle Connect** (Android App) | Kotlin 2.0, Jetpack Compose, Health Connect 1.1, Retrofit 2, WorkManager, DataStore | Reads wearable biometrics via Health Connect, device gyroscope/GPS, detects falls, and syncs data to the backend every 15 min |
+| 3 | **FastAPI Data Backend** | Python, FastAPI, SQLite, MongoDB, Pydantic v2 | RESTful API that ingests, stores, and serves time-series health records |
+| 4 | **AI Agent Backend** | Python, LangGraph (ReAct), Gemini 3 Flash, Qwen 3.5 0.8B (local), LangChain | Conversational medical assistant with tool-calling: vision injury analysis, PubMed search, medication reminders, sensor anomaly detection, emergency alerting |
+| 5 | **Streamlit Dashboard** | Streamlit, Plotly, Pandas | Live health visualization with configurable alert thresholds and a Vital Stability Score |
+
+---
+
+## Web Frontend (Aidelle Frontend)
+
+The web frontend is a **React 19 + Vite** application with two primary views:
+
+### Elderly Mobile View (`/user`)
+A full-screen, accessible interface featuring:
+- **3D VRM Avatar** — A lifelike AI nurse rendered with `@pixiv/three-vrm` and `@react-three/fiber` (Three.js). Supports idle, waving, talking, thinking, and nodding animations via `.vrma` clips with smooth crossfade transitions.
+- **Voice Conversation** — Browser-native Speech-to-Text (Web Speech API) for input, and **Camb AI** cloud TTS (`mars-flash` model) for natural-sounding spoken responses.
+- **Procedural Lip Sync** — Dual-wave sinusoidal mouth animation driving VRM expression blend shapes (`aa`, `ih`, `ou`) synchronized with audio playback.
+- **Video Injury Analysis** — Record video via `MediaRecorder`, upload to the Agent Backend `/analyze-video` endpoint, and receive spoken analysis.
+- **Conversation History** — Scrollable overlay showing timestamped user/AI message pairs.
+- **Real-Time Subtitles** — Word-by-word subtitle reveal synced to TTS speaking pace, with auto-fade after silence.
+
+### Nurse Dashboard (`/nurse`)
+A comprehensive monitoring panel for caregivers:
+- **Patient Overview Cards** — Click to select from tracked residents (Stable / Warning / Critical status indicators).
+- **Heart Rate Chart** — Interactive `Recharts` line chart with gradient stroke per patient.
+- **Medication Management** — Per-patient drug schedule with add/remove, status tracking (taken, upcoming, missed, scheduled).
+- **Smart Sensor Management** — Per-patient device inventory (smartwatch, temperature, insulin pump, GPS, sleep monitor) with battery levels, on/off toggles, and add/remove.
+- **Live Data Polling** — Fetches latest health records from the FastAPI backend every 5 seconds.
+
+### Frontend Environment Variables
+```env
+VITE_AGENT_API_URL=http://localhost:8000   # Agent Backend URL
+VITE_DATA_API_URL=http://localhost:8000     # FastAPI Data Backend URL
+VITE_CAMB_API_KEY=your_camb_api_key        # Camb AI TTS API key
+```
 
 ---
 
@@ -63,13 +113,17 @@ graph TD
 
 Aidelle supports modular smart health monitoring including:
 
-| Metric | Unit | Icon | Health Connect Record |
-|--------|------|------|----------------------|
-| Heart Rate | `bpm` | ❤️ | `HeartRateRecord` |
-| Steps | `steps` | 👣 | `StepsRecord` |
-| Blood Oxygen / SpO2 | `%` | 🩸 | `OxygenSaturationRecord` |
-| Sleep Duration | `minutes` | 🛏️ | `SleepSessionRecord` |
-| Body Temperature | `°C` | 🌡️ | `BodyTemperatureRecord` |
+| Metric | Unit | Icon | Source |
+|--------|------|------|--------|
+| Heart Rate | `bpm` | ❤️ | Health Connect (`HeartRateRecord`) |
+| Steps | `steps` | 👣 | Health Connect (`StepsRecord`) |
+| Blood Oxygen / SpO2 | `%` | 🩸 | Health Connect (`OxygenSaturationRecord`) |
+| Sleep Duration | `minutes` | 🛏️ | Health Connect (`SleepSessionRecord`) |
+| Body Temperature | `°C` | 🌡️ | Health Connect (`BodyTemperatureRecord`) |
+| Accelerometer | `m/s²` | 📐 | Device Sensor (`SensorManager`) |
+| Gyroscope | `rad/s` | 📐 | Device Sensor (`SensorManager`) |
+| GPS Location | `m/s` | 📍 | FusedLocationProviderClient |
+| Accident Alert | `m/s²` | 🚨 | AccidentDetector (fall detection) |
 
 ---
 
@@ -97,8 +151,25 @@ The Agent Backend uses a **dual-LLM architecture**:
 |--------|----------|-------------|
 | `GET` | `/health` | Agent health check |
 | `POST` | `/chat` | Send a natural-language message; the agent reasons, calls tools, and replies |
-| `POST` | `/analyze-video` | Upload a video file for direct injury analysis |
+| `POST` | `/analyze-video` | Upload a video file for direct injury analysis (supports WebM → MP4 conversion) |
 | `POST` | `/analyze-image` | Upload an image file for direct injury analysis |
+
+---
+
+## Accident / Fall Detection
+
+The Android app includes a **3-phase fall detection algorithm** (`AccidentDetector.kt`):
+
+1. **Impact Phase** — Accelerometer magnitude exceeds **30 m/s²** (≈3g), triggering a monitoring window.
+2. **Rotation Phase** — Gyroscope magnitude exceeds **5 rad/s** during the impact, indicating a tumble.
+3. **Stillness Phase** — Post-impact low acceleration variance for 3+ seconds, suggesting the user is motionless after a fall.
+
+Confidence levels:
+- **High** — Both stillness and high rotation detected
+- **Medium** — One of the two conditions met
+- **Low** — Dismissed (no alert)
+
+Alerts are immediately sent to the backend with GPS coordinates, peak acceleration, and confidence metadata. A 30-second cooldown prevents duplicate alerts.
 
 ---
 
@@ -108,8 +179,42 @@ The Agent Backend uses a **dual-LLM architecture**:
 Aidelle/
 ├── README.md
 ├── .gitignore
+├── .env                                     # API keys (not committed)
 ├── assets/
 │   └── banner.jpg
+│
+├── aidelle-frontend/                        # Web Frontend (React + Vite)
+│   ├── package.json                         # React 19, Three.js, Recharts, Camb AI
+│   ├── vite.config.js
+│   ├── index.html
+│   ├── public/
+│   │   ├── assistant.vrm                    # 3D VRM avatar model
+│   │   ├── animation/                       # VRMA animation clips
+│   │   │   ├── Idle.vrma
+│   │   │   ├── Talking.vrma
+│   │   │   ├── Thinking.vrma
+│   │   │   ├── Waving.vrma
+│   │   │   └── Head Nod Yes.vrma
+│   │   ├── icon.jpeg
+│   │   └── favicon.svg
+│   └── src/
+│       ├── main.jsx                         # React entry point
+│       ├── App.jsx                          # Router: /, /user, /nurse
+│       ├── components/
+│       │   └── Avatar.jsx                   # 3D VRM avatar with lip sync
+│       ├── hooks/
+│       │   ├── useBrain.js                  # Agent API integration
+│       │   ├── useVoice.js                  # STT + Camb AI TTS
+│       │   └── useAudioAnalyzer.js          # WebAudio frequency analysis
+│       ├── utils/
+│       │   └── loadMixamoAnimation.js       # Mixamo → VRM retargeting
+│       └── views/
+│           ├── HomeSelection.jsx            # Landing page (role selector)
+│           ├── UserMobileView.jsx           # Elderly voice + avatar interface
+│           ├── UserMobileView.css
+│           ├── NurseDashboard.jsx           # Nurse monitoring panel
+│           ├── NurseDashboard.css
+│           └── HomeSelection.css
 │
 ├── Aidelle_Connect_app/                     # Android Mobile App
 │   ├── build.gradle.kts                     # Root Gradle (AGP 8.7, Kotlin 2.0.21)
@@ -119,9 +224,13 @@ Aidelle/
 │       └── src/main/
 │           ├── AndroidManifest.xml
 │           └── java/com/aidelle/sensorread/
-│               ├── MainActivity.kt          # Entry point, permission launcher
+│               ├── MainActivity.kt          # Entry point, permission launchers
 │               ├── data/
 │               │   ├── HealthConnectManager.kt  # Health Connect SDK wrapper
+│               │   ├── SensorDataManager.kt     # Gyroscope + Accelerometer
+│               │   ├── LocationDataManager.kt   # GPS via FusedLocation
+│               │   ├── AccidentDetector.kt      # Fall detection algorithm
+│               │   ├── SensorPreferences.kt     # DataStore sensor toggles
 │               │   ├── api/
 │               │   │   ├── ApiService.kt        # Retrofit interface
 │               │   │   └── RetrofitClient.kt    # Configurable HTTP client
@@ -133,7 +242,7 @@ Aidelle/
 │               │   └── HealthSyncWorker.kt      # WorkManager background sync
 │               └── ui/
 │                   ├── screens/
-│                   │   └── HomeScreen.kt        # Main dashboard UI
+│                   │   └── HomeScreen.kt        # Main dashboard + sensor toggles
 │                   ├── components/
 │                   │   └── HealthDataCard.kt    # Card + summary composables
 │                   └── theme/
@@ -148,6 +257,7 @@ Aidelle/
 │   ├── models.py                            # Pydantic schemas + DataType enum
 │   ├── database.py                          # SQLite CRUD layer
 │   ├── mongodb.py                           # MongoDB drop-in replacement
+│   ├── health_data.db                       # SQLite database file
 │   └── dashboard.py                         # Streamlit health dashboard
 │
 └── Agent_Backend/                           # AI Agent Backend
@@ -162,7 +272,23 @@ Aidelle/
 
 ## Project Setup & Installation
 
-### 1. FastAPI Data Backend
+### 1. Web Frontend (Aidelle Frontend)
+
+```bash
+cd aidelle-frontend/
+
+# Create .env with API keys:
+# VITE_AGENT_API_URL=http://localhost:8000
+# VITE_DATA_API_URL=http://localhost:8000
+# VITE_CAMB_API_KEY=your_camb_api_key
+
+npm install
+npm run dev
+```
+
+*Opens at `http://localhost:5173`. Navigate to `/user` for the AI avatar or `/nurse` for the monitoring dashboard.*
+
+### 2. FastAPI Data Backend
 
 ```bash
 cd fastapi_backend/
@@ -179,7 +305,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 *API at `http://localhost:8000` — Swagger UI at `/docs`.*
 
-### 2. Streamlit Dashboard
+### 3. Streamlit Dashboard
 
 ```bash
 cd fastapi_backend/
@@ -188,7 +314,7 @@ streamlit run dashboard.py
 
 *Opens automatically at `http://localhost:8501`.*
 
-### 3. AI Agent Backend
+### 4. AI Agent Backend
 
 ```bash
 cd Agent_Backend/
@@ -200,19 +326,20 @@ echo GEMINI_API_KEY=your_key_here > .env
 pip install langchain langgraph langchain-google-genai transformers torch opencv-python pymongo python-dotenv qwen-vl-utils fastapi uvicorn
 
 # Run as API server:
-uvicorn api:app --host 0.0.0.0 --port 8001
+uvicorn api:app --host 0.0.0.0 --port 8000
 
 # Or run as interactive CLI:
 python medical_agent.py --model gemini
 ```
 
-### 4. Android App (Aidelle Connect)
+### 5. Android App (Aidelle Connect)
 
 1. Open `Aidelle_Connect_app/` in **Android Studio** (Ladybug or later).
 2. Sync Project with Gradle Files.
 3. Build and run on a **Physical Device** or Emulator running **API 28+**.
 4. Tap the ⚙️ settings icon to configure your server URL (e.g. `http://192.168.x.x:8000`).
-5. Grant Health Connect permissions and tap **Sync Now**.
+5. Enable/disable individual sensors (Heart Rate, Steps, SpO2, Sleep, Temperature, Gyroscope, GPS, Accident Detection) from the **Sensor Configuration** panel.
+6. Grant Health Connect and Location permissions, then tap **Sync Now**.
 
 ---
 
@@ -225,12 +352,12 @@ The SQLite database `health_data.db` stores the `health_records` table:
 | Column Name | Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | `INTEGER` | `PRIMARY KEY, AUTOINCREMENT` | Unique record ID |
-| `data_type` | `TEXT` | `NOT NULL` | Enumerated string: `heart_rate`, `steps`, etc. |
+| `data_type` | `TEXT` | `NOT NULL` | Enumerated string: `heart_rate`, `steps`, `gyroscope`, `gps`, `accident_alert`, etc. |
 | `value` | `REAL` | `NOT NULL` | The actual reading (e.g., 98.2) |
-| `unit` | `TEXT` | `NOT NULL` | e.g. `bpm`, `%`, `steps` |
+| `unit` | `TEXT` | `NOT NULL` | e.g. `bpm`, `%`, `steps`, `m/s²`, `rad/s` |
 | `timestamp` | `TEXT` | `NOT NULL` | ISO 8601 start timestamp of the reading |
 | `end_timestamp` | `TEXT` | `NULL` | ISO 8601 end time (for durational data like sleep) |
-| `metadata` | `TEXT` | `NULL` | JSON-encoded string for extra flags |
+| `metadata` | `TEXT` | `NULL` | JSON-encoded string for extra flags (e.g., x/y/z axes, lat/lng, accident confidence) |
 | `device_id` | `TEXT` | `NULL` | Device manufacturer & model identity |
 | `created_at` | `TEXT` | `NOT NULL` | Backend insertion timestamp |
 
@@ -262,6 +389,26 @@ The SQLite database `health_data.db` stores the `health_records` table:
       "value": 75.0,
       "unit": "bpm",
       "timestamp": "2026-04-18T08:30:00Z"
+    },
+    {
+      "data_type": "gyroscope",
+      "value": 1.23,
+      "unit": "rad/s",
+      "timestamp": "2026-04-18T08:30:01Z",
+      "metadata": {"x": 0.5, "y": 0.8, "z": 0.3}
+    },
+    {
+      "data_type": "accident_alert",
+      "value": 35.2,
+      "unit": "m/s²",
+      "timestamp": "2026-04-18T08:30:02Z",
+      "metadata": {
+        "accident_detected": true,
+        "peak_acceleration": 35.2,
+        "confidence": "high",
+        "gps_latitude": 3.1234,
+        "gps_longitude": 101.5678
+      }
     }
   ]
 }
@@ -296,11 +443,14 @@ The Aidelle Tier 1 dashboard (`dashboard.py`) provides:
 
 | Layer | Technology |
 |-------|-----------|
-| Mobile | Kotlin 2.0, Jetpack Compose (Material 3), Health Connect 1.1-alpha10, Retrofit 2.11, WorkManager |
+| Web Frontend | React 19, Vite 8, Three.js 0.183, @pixiv/three-vrm 3.5, @react-three/fiber 9, Recharts 3.8, React Router 7, Lucide React |
+| Voice & TTS | Browser Web Speech API (STT), Camb AI `mars-flash` (TTS) |
+| 3D Avatar | VRM 1.0, VRMA animation clips (Idle, Talking, Thinking, Waving, Nodding), procedural lip sync |
+| Mobile | Kotlin 2.0, Jetpack Compose (Material 3), Health Connect 1.1-alpha10, Retrofit 2.11, WorkManager, DataStore Preferences, Play Services Location 21.3 |
 | Data Backend | Python, FastAPI 0.115, Pydantic 2.9, SQLite (WAL mode), PyMongo 4.6 |
 | AI Agent | LangGraph (ReAct), LangChain, Gemini 3 Flash (Google AI), Qwen 3.5 0.8B (local HuggingFace), OpenCV |
 | Dashboard | Streamlit 1.38, Plotly 5.23, Pandas 2.0 |
-| External APIs | PubMed NCBI e-Utilities |
+| External APIs | PubMed NCBI e-Utilities, Camb AI TTS |
 
 ---
 
