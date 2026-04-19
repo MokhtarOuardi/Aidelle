@@ -33,9 +33,9 @@ const heartRateDataMap = {
 };
 
 const patientsData = [
-  { id: 1, name: 'Fatimah Abdullah', location: 'Section 14, PJ', status: 'Stable', bpm: 72, trend: 'stable' },
-  { id: 2, name: 'Tan Wei Seng', location: 'Cheras, KL', status: 'Warning', bpm: 98, trend: 'up' },
-  { id: 3, name: 'Karthik Pillai', location: 'Bayan Lepas, PG', status: 'Critical', bpm: 112, trend: 'up' },
+  { id: 1, name: 'Fatimah Abdullah', location: 'Section 14, PJ', status: 'Stable', bpm: 72, trend: 'stable', steps: 4500, oxygen: 98 },
+  { id: 2, name: 'Tan Wei Seng', location: 'Cheras, KL', status: 'Warning', bpm: 98, trend: 'up', steps: 2100, oxygen: 94 },
+  { id: 3, name: 'Karthik Pillai', location: 'Bayan Lepas, PG', status: 'Critical', bpm: 112, trend: 'up', steps: 1200, oxygen: 89 },
 ];
 
 const SENSOR_TYPES = [
@@ -52,6 +52,7 @@ export default function NurseDashboard() {
   const navigate = useNavigate();
   const [selectedPatientId, setSelectedPatientId] = useState(1);
   const [patients, setPatients] = useState(patientsData);
+  const [graphData, setGraphData] = useState([]);
 
   // ── Fetch Health Data ──
   useEffect(() => {
@@ -66,23 +67,81 @@ export default function NurseDashboard() {
         const latest = data.latest_records || [];
 
         // Map backend data to the patients state
-        // For simplicity in this demo, we apply the latest data to the selected patient's specific metrics
         setPatients(prevPatients => prevPatients.map(p => {
-          if (p.id === selectedPatientId) {
+          if (p.id === 1) { // Patient 1 is REAL (linked to API)
+            const updates = {};
             const hrRecord = latest.find(r => r.data_type === 'heart_rate');
             if (hrRecord) {
-              return { ...p, bpm: hrRecord.value, status: hrRecord.value > 100 ? 'Critical' : hrRecord.value > 90 ? 'Warning' : 'Stable' };
+              updates.bpm = Math.round(hrRecord.value);
+              updates.status = hrRecord.value > 100 ? 'Critical' : hrRecord.value > 90 ? 'Warning' : 'Stable';
             }
+            const stepsRecord = latest.find(r => r.data_type === 'steps');
+            if (stepsRecord) {
+              updates.steps = Math.round(stepsRecord.value);
+            }
+            const oxygenRecord = latest.find(r => r.data_type === 'oxygen_saturation');
+            if (oxygenRecord) {
+              updates.oxygen = Math.round(oxygenRecord.value);
+            }
+            return { ...p, ...updates };
+          } else {
+            // Patients 2 and 3 are FAKE (simulating live activity)
+            const jitter = (val, range) => Math.round(val + (Math.random() * range - range / 2));
+            return {
+              ...p,
+              bpm: jitter(p.id === 2 ? 98 : 112, 4),
+              steps: p.steps + Math.floor(Math.random() * 3),
+              oxygen: Math.min(100, Math.max(88, jitter(p.id === 2 ? 94 : 89, 1)))
+            };
           }
-          return p;
         }));
       } catch (err) {
         console.error("Dashboard fetch error:", err);
       }
     };
 
+    const fetchGraphData = async () => {
+      // Only fetch graph data from API for Patient 1
+      if (selectedPatientId !== 1) {
+        setGraphData(heartRateDataMap[selectedPatientId] || []);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${dataApiUrl}/api/health-data?data_type=heart_rate&limit=20`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const formattedData = [];
+        const seen = new Set();
+        data.reverse().forEach(record => {
+           const d = new Date(record.timestamp);
+           const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+           const value = Math.round(record.value);
+           const key = `${time}-${value}`;
+           if (!seen.has(key)) {
+             seen.add(key);
+             formattedData.push({ time, value });
+           }
+        });
+        
+        if (formattedData.length > 0) {
+            setGraphData(formattedData);
+        } else {
+            setGraphData(heartRateDataMap[selectedPatientId]);
+        }
+      } catch (err) {
+        console.error("Graph fetch error:", err);
+        setGraphData(heartRateDataMap[selectedPatientId]);
+      }
+    };
+
     fetchLatestData();
-    const interval = setInterval(fetchLatestData, 5000); // Poll every 5 seconds
+    fetchGraphData();
+    const interval = setInterval(() => {
+      fetchLatestData();
+      fetchGraphData();
+    }, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, [selectedPatientId]);
 
@@ -257,13 +316,27 @@ export default function NurseDashboard() {
           {/* ── BPM Chart ── */}
           <div className="vitals-section">
             <div className="glass-card full-height">
-              <div className="card-header">
-                <h2><Heart className="card-icon" color="var(--aidelle-danger)" /> BPM: {selectedPatient.name}</h2>
-                <div className={`status-badge pulse ${selectedPatient.status.toLowerCase()}`}>{selectedPatient.status}</div>
+              <div className="card-header" style={{ flexWrap: 'wrap', gap: '10px' }}>
+                <h2><Activity className="card-icon" color="var(--aidelle-danger)" /> Vitals: {selectedPatient.name}</h2>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className={`status-badge pulse ${selectedPatient.status.toLowerCase()}`}>{selectedPatient.status}</div>
+                  <div className="status-badge" style={{ background: 'rgba(255, 255, 255, 0.4)', color: '#333', display: 'flex', alignItems: 'center' }}>
+                    <Heart size={14} color="var(--aidelle-danger)" style={{ marginRight: '6px' }} />
+                    {selectedPatient.bpm} BPM
+                  </div>
+                  <div className="status-badge" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#0284c7', display: 'flex', alignItems: 'center' }}>
+                    <Activity size={14} style={{ marginRight: '6px' }} />
+                    {selectedPatient.oxygen}% SpO2
+                  </div>
+                  <div className="status-badge" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#166534', display: 'flex', alignItems: 'center' }}>
+                    <Activity size={14} style={{ marginRight: '6px' }} />
+                    {selectedPatient.steps} Steps
+                  </div>
+                </div>
               </div>
               <div className="chart-container">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={heartRateDataMap[selectedPatientId]}>
+                  <LineChart data={graphData.length > 0 ? graphData : heartRateDataMap[selectedPatientId]}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#7a869a' }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#7a869a' }} domain={['dataMin - 10', 'dataMax + 10']} />

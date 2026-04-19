@@ -13,13 +13,13 @@ export default function HomeSelection() {
         <h1>Aidelle</h1>
         <p>Select a demonstration view</p>
       </div>
-      
+
       <div className="cards-container">
         <button className="demo-card" onClick={() => navigate('/user')}>
           <div className="icon-wrapper">
             <Smartphone size={48} strokeWidth={1.5} />
           </div>
-          <h2>Elderly Mobile View</h2>
+          <h2>Patient View</h2>
           <p>A streamlined, accessible interface showcasing our 3D AI Assistant.</p>
         </button>
 

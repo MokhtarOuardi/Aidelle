@@ -83,7 +83,7 @@ graph TD
 
 The web frontend is a **React 19 + Vite** application with two primary views:
 
-### Elderly Mobile View (`/user`)
+### Patient View (`/user`)
 A full-screen, accessible interface featuring:
 - **3D VRM Avatar** — A lifelike AI nurse rendered with `@pixiv/three-vrm` and `@react-three/fiber` (Three.js). Supports idle, waving, talking, thinking, and nodding animations via `.vrma` clips with smooth crossfade transitions.
 - **Voice Conversation** — Browser-native Speech-to-Text (Web Speech API) for input, and **Camb AI** cloud TTS (`mars-flash` model) for natural-sounding spoken responses.
