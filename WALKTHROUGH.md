@@ -301,10 +301,10 @@ Vite opens at `http://localhost:5173` with three routes:
 
 #### `/` — Home Selection
 A landing page with two cards:
-- **Elderly Mobile View** → navigates to `/user`
+- **Patient View** → navigates to `/user`
 - **Nurse Dashboard** → navigates to `/nurse`
 
-#### `/user` — 3D AI Avatar (Elderly Interface)
+#### `/user` — 3D AI Avatar (Patient Interface)
 This is the main interaction surface:
 
 1. A **lifelike 3D VRM avatar** appears with a waving animation
@@ -320,11 +320,14 @@ This is the main interaction surface:
 #### `/nurse` — Nurse Monitoring Dashboard
 A comprehensive caregiver panel:
 
-1. **Patient cards** at the top — click to select a patient (Fatimah, Tan, Karthik)
-2. **Heart Rate chart** — interactive Recharts line graph per patient
-3. **Medication panel** — view/add/remove medications with status tracking
-4. **Sensor panel** — manage smart devices (smartwatch, temperature, insulin pump, GPS, sleep monitor) with battery levels and on/off toggles
-5. **Live polling** — fetches latest health data from the FastAPI Data Backend every 5 seconds
+1. **Patient cards** at the top — click to select a patient (Fatimah, Tan, Karthik). Each card shows live BPM and status
+2. **Vitals header** — displays real-time **BPM**, **SpO2%**, and **Steps** badges for the selected patient
+3. **Heart Rate chart** — interactive Recharts line graph:
+   - **Patient 1 (Fatimah):** Fetches real heart rate history from the Data API (`GET /api/health-data?data_type=heart_rate&limit=20`) and plots actual data. Falls back to static mock data if the API is unreachable
+   - **Patients 2 & 3:** Use static demo data with simulated live jitter (BPM ±2, SpO2 ±1, Steps incrementing) for demonstration purposes
+4. **Medication panel** — view/add/remove medications with status tracking (taken, upcoming, missed, scheduled)
+5. **Sensor panel** — manage smart devices (smartwatch, temperature, insulin pump, GPS, sleep monitor) with battery levels and on/off toggles
+6. **Live polling** — fetches latest health data from the FastAPI Data Backend **every 5 seconds**, updating both the patient cards and the graph simultaneously
 
 > **Keep this terminal open.** The frontend auto-reloads on code changes.
 
@@ -393,10 +396,12 @@ Start them **in this order** for the best experience:
 ### Test 5: Nurse Dashboard
 
 1. Go to `http://localhost:5173/nurse`
-2. Click on different patient cards to see their heart rate charts
-3. Add a medication: click **+ Add** in the Medications panel
-4. Add a sensor: click **+ Add** in the Smart Sensors panel
-5. Toggle a sensor on/off and observe the status change
+2. Click on different patient cards — observe the BPM, SpO2, and Steps badges updating in the vitals header
+3. Select **Fatimah Abdullah** (Patient 1) — her heart rate chart pulls **real data** from the Data API. If you pushed mock data in Test 6, her chart will show it
+4. Select **Tan Wei Seng** or **Karthik Pillai** — their vitals will jitter slightly every 5 seconds (simulated live demo)
+5. Add a medication: click **+ Add** in the Medications panel
+6. Add a sensor: click **+ Add** in the Smart Sensors panel
+7. Toggle a sensor on/off and observe the status change
 
 ### Test 6: Push Data via API
 
