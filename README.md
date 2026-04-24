@@ -1,6 +1,6 @@
 # Aidelle : Your Personal AI Nurse
 
-![Aidelle Banner](assets/banner.jpg)
+![Aidelle Banner](assets/github_banner_2.png)
 
 **Aidelle** is a full-stack, AI-powered health monitoring ecosystem designed to care for elderly users. It combines a **React + Three.js** web frontend with a 3D AI avatar, an **Android (Jetpack Compose)** mobile client, a **Python FastAPI** data-sync backend, and a **LangGraph-powered AI Agent** backend into one cohesive platform. The mobile app reads biometrics from smartwatches via Android **Health Connect**, syncs readings to a local server, and the AI agent provides conversational medical assistance — including injury vision analysis, medication reminders, PubMed research, anomaly detection, fall/accident detection, and emergency contact alerting.
 
